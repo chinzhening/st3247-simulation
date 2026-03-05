@@ -10,6 +10,8 @@ def rejection_sampling(
         proposal_rvs: Callable[[], np.ndarray],
         M: float = 1.0,
         n_samples: int = 10_000,
+        truncation_q: float = 0.01,
+        granularity: int = 1000,
         diagnostics: bool = False
     ) -> Tuple[np.ndarray, float]:
     """Perform rejection sampling to generate samples from the target distribution
@@ -51,7 +53,9 @@ def rejection_sampling(
             acceptance_rate,
             target_density,
             proposal_density,
-            M,
+            M=M,
+            truncation_q=truncation_q,
+            granularity=granularity,
         )
 
     return samples, acceptance_rate
@@ -63,6 +67,8 @@ def _generate_diagnostics(
         target_density: Callable[[float], float],
         proposal_density: Callable[[float], float],
         M: float,
+        truncation_q: float = 0.01,
+        granularity: int = 1000,
         tol = 1e-5,
     ) -> None:
     """Plot the diagnostic plot for rejection sampling.
@@ -72,12 +78,19 @@ def _generate_diagnostics(
 
    # For each dimension, plot the histogram of the samples and the target density
     k = samples.shape[1]
+    n = samples.shape[0]
+    granularity = min(granularity, max(100, n // 10))
+    bins = min(50, max(10, granularity // 10))
 
     for j in range(k):
+
         plt.figure(figsize=(8, 6))
-        x_min = np.min(samples[:, j]) - tol
-        x_max = np.max(samples[:, j]) + tol
-        xx = np.linspace(x_min, x_max, 100)
+        # determine boundary by using quantiles of the samples
+        q_lo = np.quantile(samples[:, j], truncation_q)
+        q_hi = np.quantile(samples[:, j], 1 - truncation_q)
+        x_min = q_lo - tol
+        x_max = q_hi + tol
+        xx = np.linspace(x_min, x_max, granularity)
         yy_target = target_density(xx)
         yy_proposal = proposal_density(xx)
 
@@ -87,9 +100,14 @@ def _generate_diagnostics(
         yy_target /= z
         yy_proposal /= z
 
+        # discard samples that are outside the boundary
+        samples = samples[(samples[:, j] >= x_min) & (samples[:, j] <= x_max)]
+
         plt.plot(xx, yy_target, color='red', label='Target Density')
         plt.plot(xx, M * yy_proposal, color='blue', label='Scaled Proposal Density')
-        plt.hist(samples[:, j], bins=30, density=True, alpha=0.6, color='black')
+        plt.hist(samples[:, j], bins=bins, density=True, alpha=0.6, color='black')
+
+        plt.xlim(x_min, x_max)
 
         plt.xlabel(f'X{j+1}')
         plt.ylabel('Density')
@@ -100,7 +118,7 @@ def _generate_diagnostics(
 
     assert np.all(yy_target <= M * yy_proposal), "M is too small, target density exceeds scaled proposal density."
 
-def _diagnostic_plot_2d(
+def diagnostic_plot_2d(
         samples: np.ndarray,
         acceptance_rate: float,
         target_density: Callable[[np.ndarray], float],
@@ -119,8 +137,8 @@ def _diagnostic_plot_2d(
     y_min = np.min(samples[:, 1]) - tol
     y_max = np.max(samples[:, 1]) + tol
     xx, yy = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
-    target_density_vals = target_density(np.stack([xx, yy], axis=-1))
-    proposal_density_vals = proposal_density(np.stack([xx, yy], axis=-1))
+    target_density_vals = np.apply_along_axis(target_density, 1, np.stack([xx, yy], axis=-1).reshape(-1, 2)).reshape(xx.shape)
+    proposal_density_vals = np.apply_along_axis(proposal_density, 1, np.stack([xx, yy], axis=-1).reshape(-1, 2)).reshape(xx.shape)
     # Normalize the densities for plotting
     dx = xx[0, 1] - xx[0, 0]
     dy = yy[1, 0] - yy[0, 0]
@@ -169,7 +187,7 @@ def _test_diagnostic_plot_2d():
         n_samples=10_000
     )
 
-    _diagnostic_plot_2d(samples, acceptance_rate, target_density, proposal_density, M_init)
+    diagnostic_plot_2d(samples, acceptance_rate, target_density, proposal_density, M_init)
 
 def _test_1():
     # sample from a normal mixture using a cauchy distribution as the proposal
@@ -208,7 +226,7 @@ def _test_2():
 
     
 if __name__ == "__main__":
-    # _test_1()
-    # _test_2()
+    #_test_1()
+     _test_2()
 
-    _test_diagnostic_plot_2d()
+    # _test_diagnostic_plot_2d()

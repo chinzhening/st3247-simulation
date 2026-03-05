@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from typing import Callable
 
+# Utility Function Definitions
 def generate_mean_and_std_err(
         data: np.ndarray,
         prob: bool = False
@@ -19,6 +20,7 @@ def generate_mean_and_std_err(
 
     print(f"Mean: {mean:.4f}")
     print(f"Standard Error: {std_err:.4f}")
+
 
 def plot_density(
         data: np.ndarray,
@@ -48,6 +50,15 @@ def plot_density(
     plt.grid()
 
     plt.show()
+
+def estimate_integral(
+        samples: np.ndarray,
+        acceptance_rate: float,
+        M: float,
+        proposal_normalization_constant: float,
+    ):
+    return acceptance_rate * proposal_normalization_constant * M
+
 
 if __name__ == "__main__":
     # Example usage
